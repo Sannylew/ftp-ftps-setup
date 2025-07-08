@@ -1,13 +1,12 @@
 #!/bin/bash
 
-# FTP/FTPS 服务器一键部署脚本 - 优化版
-# 作者: Sannylew
-# 版本: 2.0
+# FTP/SFTP 服务器一键部署脚本
+# 版本: 3.0
 
 set -e  # 遇到错误立即退出
 
 echo "======================================================"
-echo "🚀 FTP/FTPS 服务器一键部署工具"
+echo "🚀 FTP/SFTP 服务器一键部署工具"
 echo "======================================================"
 echo ""
 
@@ -55,7 +54,7 @@ show_menu() {
     echo "请选择要部署的服务类型："
     echo ""
     echo "1️⃣  FTP 服务器 (标准文件传输)"
-    echo "2️⃣  FTPS 服务器 (TLS加密传输) - 推荐"
+    echo "2️⃣  SFTP 服务器 (SSH文件传输) - 推荐"
     echo "3️⃣  退出"
     echo ""
     echo "======================================================"
@@ -65,19 +64,21 @@ show_menu() {
 get_user_config() {
     # 用户名输入和验证
     while true; do
-        read -p "请输入要创建的 FTP 用户名（例如 sunny）: " ftp_user
+        read -p "请输入要创建的用户名（默认: ftpuser，直接回车使用默认值）: " ftp_user
+        ftp_user=${ftp_user:-ftpuser}  # 设置默认值
         if validate_username "$ftp_user"; then
             break
         fi
     done
 
     # 目录设置
-    read -p "请输入要映射的服务器目录（默认 /root/brec/file）: " source_dir
+    read -p "请输入要映射的服务器目录（默认: /root/brec/file，直接回车使用默认值）: " source_dir
     source_dir=${source_dir:-/root/brec/file}
 
     if [ ! -d "$source_dir" ]; then
         echo "❌ 路径不存在：$source_dir"
-        read -p "是否创建该目录？(y/n): " create_dir
+        read -p "是否创建该目录？(默认: y，直接回车使用默认值) [y/n]: " create_dir
+        create_dir=${create_dir:-y}  # 设置默认值为y
         if [[ "$create_dir" == "y" ]]; then
             mkdir -p "$source_dir" || {
                 echo "❌ 创建目录失败"
@@ -90,12 +91,13 @@ get_user_config() {
     fi
 
     # 密码设置
-    read -p "是否自动生成密码？(y/n): " auto_pwd
+    read -p "是否自动生成密码？(默认: y，直接回车使用默认值) [y/n]: " auto_pwd
+    auto_pwd=${auto_pwd:-y}  # 设置默认值为y
     if [[ "$auto_pwd" == "y" ]]; then
         ftp_pass=$(openssl rand -base64 12)
     else
         while true; do
-            read -s -p "请输入该用户的 FTP 密码（至少8位）: " ftp_pass
+            read -s -p "请输入该用户的密码（至少8位）: " ftp_pass
             echo
             if [ ${#ftp_pass} -ge 8 ]; then
                 read -s -p "请再次确认密码: " ftp_pass_confirm
@@ -112,7 +114,7 @@ get_user_config() {
     fi
 }
 
-# 通用配置
+# 通用配置（仅用于FTP）
 setup_common() {
     echo ""
     echo "⚙️  开始配置基础环境..."
@@ -160,31 +162,19 @@ setup_common() {
     fi
 }
 
-# 安装软件包
-install_packages() {
-    local install_ssl="$1"
-    
+# 配置FTP
+setup_ftp() {
     echo "📦 安装软件包..."
     apt update || {
         echo "❌ 更新软件包列表失败"
         exit 1
     }
     
-    if [[ "$install_ssl" == "yes" ]]; then
-        apt install -y vsftpd openssl || {
-            echo "❌ 安装软件包失败"
-            exit 1
-        }
-    else
-        apt install -y vsftpd || {
-            echo "❌ 安装 vsftpd 失败"
-            exit 1
-        }
-    fi
-}
+    apt install -y vsftpd || {
+        echo "❌ 安装 vsftpd 失败"
+        exit 1
+    }
 
-# 配置FTP
-setup_ftp() {
     echo "📡 配置 FTP 服务器..."
     
     # 备份原配置
@@ -220,70 +210,108 @@ EOF
     echo "👤 用户名: $ftp_user"
     echo "🔑 密码: $ftp_pass"
     echo "📁 映射路径: $source_dir → /file"
-    echo "✅ 推荐使用 FileZilla 被动模式连接端口 21"
+    echo "📡 端口: 21"
+    echo "✅ 推荐使用 FileZilla 被动模式连接"
 }
 
-# 配置FTPS
-setup_ftps() {
-    echo "🔒 配置 FTPS 服务器（TLS加密）..."
+# 配置SFTP
+setup_sftp() {
+    echo "🔐 配置 SFTP 服务器（SSH文件传输）..."
     
-    # 生成TLS证书
-    echo "🔐 生成 TLS 证书..."
-    mkdir -p /etc/ssl/private
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-      -keyout /etc/ssl/private/vsftpd.key \
-      -out /etc/ssl/private/vsftpd.crt \
-      -subj "/C=CN/ST=Example/L=FTPServer/O=MyOrg/OU=IT/CN=$(hostname)" || {
-        echo "❌ 生成TLS证书失败"
-        exit 1
-    }
-
-    chmod 600 /etc/ssl/private/vsftpd.key
-    chmod 644 /etc/ssl/private/vsftpd.crt
-
+    echo "📦 安装 OpenSSH 服务器..."
+    apt update
+    apt install -y openssh-server
+    
+    echo "👥 创建 SFTP 用户组..."
+    groupadd -f sftponly
+    
+    echo "👤 配置 SFTP 用户..."
+    if id -u "$ftp_user" &>/dev/null; then
+        echo "⚠️  用户 $ftp_user 已存在，将重置配置"
+        usermod -g sftponly -s /bin/false "$ftp_user"
+    else
+        useradd -g sftponly -s /bin/false -m "$ftp_user"
+    fi
+    
+    echo "$ftp_user:$ftp_pass" | chpasswd
+    
+    echo "📁 配置用户目录..."
+    sftp_home="/home/$ftp_user"
+    sftp_upload="$sftp_home/uploads"
+    
+    # 设置目录权限
+    chown root:root "$sftp_home"
+    chmod 755 "$sftp_home"
+    
+    # 创建上传目录
+    mkdir -p "$sftp_upload"
+    chown "$ftp_user:sftponly" "$sftp_upload"
+    chmod 755 "$sftp_upload"
+    
+    # 设置源目录访问权限
+    if [[ "$source_dir" == /root/* ]]; then
+        echo "⚠️  设置源目录访问权限..."
+        chmod o+x "$(dirname "$source_dir")" 2>/dev/null || true
+        # 确保源目录对用户组有读写权限
+        chgrp sftponly "$source_dir" 2>/dev/null || true
+        chmod g+rwx "$source_dir" 2>/dev/null || true
+    fi
+    
+    # 创建文件目录并挂载
+    mkdir -p "$sftp_home/files"
+    mount --bind "$source_dir" "$sftp_home/files"
+    
+    # 设置files目录权限 - 确保可读写
+    chown "$ftp_user:sftponly" "$sftp_home/files"
+    chmod 755 "$sftp_home/files"  # 确保目录可读写执行
+    
+    # 如果源目录权限设置成功，files目录继承读写权限
+    echo "✅ 已配置 /files/ 目录为可读写权限"
+    
+    echo "🔗 配置自动挂载..."
+    if ! grep -q "$sftp_home/files" /etc/fstab; then
+        echo "$source_dir $sftp_home/files none bind 0 0" >> /etc/fstab
+    fi
+    
+    echo "🔧 配置 SSH 服务..."
     # 备份原配置
-    [ -f /etc/vsftpd.conf ] && cp /etc/vsftpd.conf /etc/vsftpd.conf.backup.$(date +%Y%m%d_%H%M%S)
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)
+    
+    # 检查并添加SFTP配置
+    if ! grep -q "Match Group sftponly" /etc/ssh/sshd_config; then
+        cat >> /etc/ssh/sshd_config <<EOF
 
-    # 生成配置
-    cat > /etc/vsftpd.conf <<EOF
-listen=YES
-listen_ipv6=NO
-anonymous_enable=NO
-local_enable=YES
-write_enable=YES
-chroot_local_user=YES
-allow_writeable_chroot=YES
-local_root=$ftp_home
-pasv_enable=YES
-pasv_min_port=40000
-pasv_max_port=40100
-ssl_enable=YES
-rsa_cert_file=/etc/ssl/private/vsftpd.crt
-rsa_private_key_file=/etc/ssl/private/vsftpd.key
-force_local_data_ssl=YES
-force_local_logins_ssl=YES
-ssl_tlsv1=YES
-ssl_sslv2=NO
-ssl_sslv3=NO
-require_ssl_reuse=NO
-pam_service_name=vsftpd
-seccomp_sandbox=NO
+# SFTP Configuration
+Match Group sftponly
+    ChrootDirectory %h
+    ForceCommand internal-sftp
+    AllowTcpForwarding no
+    X11Forwarding no
+    PasswordAuthentication yes
 EOF
-
-    # 启动服务
-    systemctl restart vsftpd && systemctl enable vsftpd || {
-        echo "❌ 启动 vsftpd 服务失败"
-        exit 1
-    }
-
+    fi
+    
+    echo "🔄 重启 SSH 服务..."
+    systemctl restart ssh
+    systemctl enable ssh
+    
+    # 配置防火墙
+    if command -v ufw &> /dev/null; then
+        echo "🔥 配置防火墙..."
+        ufw allow ssh
+        ufw --force enable
+    fi
+    
     echo ""
-    echo "🎉 FTPS 部署成功（TLS 加密已启用）"
+    echo "🎉 SFTP 部署成功（SSH 加密传输）"
     echo "🌐 IP: $(get_external_ip)"
     echo "👤 用户名: $ftp_user"
     echo "🔑 密码: $ftp_pass"
-    echo "📁 映射路径: $source_dir → /file"
-    echo "🔒 证书有效期: 365天"
-    echo "✅ 请使用 FileZilla 连接方式：[FTP over TLS - 显式加密]"
+    echo "📁 目录结构："
+    echo "   /uploads/  - 专用上传目录（可读写）"
+    echo "   /files/    - 映射目录: $source_dir（可读写）"
+    echo "📡 端口: 22"
+    echo "✅ 请使用 FileZilla 选择 SFTP 协议连接"
 }
 
 # 主程序
@@ -292,25 +320,23 @@ main() {
     
     while true; do
         show_menu
-        read -p "请输入选项 (1-3): " choice
+        read -p "请输入选项 (默认: 2=SFTP，直接回车使用默认值) [1-3]: " choice
+        choice=${choice:-2}  # 设置默认值为2（SFTP）
 
         case $choice in
             1)
                 echo ""
                 echo "📡 您选择了 FTP 服务器部署"
                 get_user_config
-                install_packages "no"
                 setup_common
                 setup_ftp
                 break
                 ;;
             2)
                 echo ""
-                echo "🔒 您选择了 FTPS 服务器部署（推荐）"
+                echo "🔐 您选择了 SFTP 服务器部署（推荐）"
                 get_user_config
-                install_packages "yes"
-                setup_common
-                setup_ftps
+                setup_sftp
                 break
                 ;;
             3)
@@ -327,7 +353,7 @@ main() {
     done
 
     echo ""
-    echo "🎊 部署完成！感谢使用 FTP/FTPS 一键部署工具"
+    echo "🎊 部署完成！感谢使用 FTP/SFTP 一键部署工具"
     echo "📖 更多信息请访问: https://github.com/Sannylew/ftp-ftps-setup"
 }
 
