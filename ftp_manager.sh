@@ -130,16 +130,8 @@ ascii_upload_enable=YES
 ascii_download_enable=YES
 hide_ids=YES
 use_localtime=YES
-# 明确启用删除和重命名权限
-delete_enable=YES
-rename_enable=YES
-rmdir_enable=YES
-# 文件权限设置
 file_open_mode=0755
 local_umask=022
-# 禁用一些限制
-deny_file={}
-hide_file={}
 EOF
 
             echo "✅ 配置文件已生成"
@@ -625,21 +617,22 @@ EOF
         echo "🔍 检查配置文件..."
         if [ -f /etc/vsftpd.conf ]; then
             echo "✅ 配置文件存在: /etc/vsftpd.conf"
+            
             if grep -q "allow_writeable_chroot=YES" /etc/vsftpd.conf; then
                 echo "✅ 已配置550错误修复"
             else
                 echo "⚠️  未配置550错误修复"
             fi
             
-            if grep -q "delete_enable=YES" /etc/vsftpd.conf; then
-                echo "✅ 已启用删除权限"
+            if grep -q "write_enable=YES" /etc/vsftpd.conf; then
+                echo "✅ 已启用写入和删除权限"
             else
-                echo "⚠️  删除权限可能未启用"
+                echo "⚠️  写入权限可能未启用"
             fi
             
             # 显示关键配置
             echo "📋 关键配置:"
-            grep -E "^(local_root|pasv_min_port|pasv_max_port|chroot_local_user|delete_enable|write_enable)" /etc/vsftpd.conf 2>/dev/null | while read line; do
+            grep -E "^(local_root|pasv_min_port|pasv_max_port|chroot_local_user|write_enable|allow_writeable_chroot)" /etc/vsftpd.conf 2>/dev/null | while read line; do
                 echo "   $line"
             done
         else
