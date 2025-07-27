@@ -14,29 +14,18 @@
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Platform](https://img.shields.io/badge/Platform-Ubuntu%2FDebian-orange.svg)]()
 
-一键式交互FTP服务器管理工具，支持自动安装、卸载和状态监控，**彻底解决权限550错误和文件删除问题**。
+交互式FTP服务器管理工具，支持安装、卸载和状态监控，**彻底解决权限550错误和文件删除问题**。
 
 ## ✨ 特色功能
 
-- 🚀 **一键部署** - 单条命令完成FTP服务器部署
+- 🚀 **简单部署** - 下载即用，完成FTP服务器部署
 - 🔧 **交互式管理** - 直观的菜单界面，操作简单
 - 🛡️ **权限修复** - 智能解决权限550错误，支持文件删除、重命名、创建
 - 📊 **状态监控** - 实时查看FTP服务器状态和用户信息
-- 🗑️ **完全卸载** - 智能检测并彻底清理所有相关组件
-- 🔒 **安全设计** - 用户chroot隔离，完整权限控制
-- 🌐 **网络优化** - 自动配置被动模式和防火墙规则
+- 🗑️ **完全卸载** - 智能检测并彻底清理所有相关组件，可选删除脚本
+- 🔄 **服务管理** - 启动、重启、修复功能
 
 ## 🚀 快速开始
-
-### 方式一：一键交互式安装（推荐）
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh | bash
-```
-
-> 📝 **说明：** 脚本会自动检测curl管道执行，下载到本地后启动完整的交互式界面
-
-### 方式二：手动下载安装
 
 ```bash
 # 下载脚本
@@ -45,187 +34,46 @@ wget https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.
 # 添加执行权限
 chmod +x ftp_manager.sh
 
-# 运行交互式安装
+# 运行交互式管理工具
 sudo ./ftp_manager.sh
 ```
 
-### 交互式菜单
-
-两种方式都会显示完整的交互式菜单：
+## 📋 交互式菜单
 
 ```
-📡 FTP 服务器管理工具
-======================================================
-🔍 检测到curl管道执行
-💡 为了支持完整交互功能，正在下载脚本到本地...
-✅ 脚本已下载，启动交互式模式...
-
 请选择操作：
 1) 安装 FTP 服务器
 2) 卸载 FTP 服务器  
 3) 查看 FTP 状态
+4) 启动 FTP 服务
+5) 重启 FTP 服务
+6) 修复挂载和权限
 0) 退出
 ```
 
-**功能特点：**
-- ✅ **完整交互** - curl方式也支持所有交互功能
-- 🔧 **智能检测** - 自动处理管道执行问题
-- 📊 **多功能** - 安装、卸载、状态查看一体化
-- 🛡️ **安全可靠** - 权限检查和确认机制
+## 📱 连接信息
 
-## 📋 功能详解
-
-### 1. 安装 FTP 服务器
-- 自动检测系统环境
-- 智能配置vsftpd服务
-- 创建FTP用户和安全权限
-- 配置目录映射和挂载
-- 自动开放防火墙端口
-- 生成连接信息
-
-### 2. 卸载 FTP 服务器
-- 智能检测FTP用户
-- 安全确认机制
-- 清理服务和软件包
-- 删除用户和权限
-- 清理挂载和配置文件
-- 恢复防火墙设置
-
-### 3. 查看 FTP 状态
-- 服务运行状态
-- 端口监听状态
-- 用户详细信息（ID、权限、目录）
-- 挂载状态和映射源
-- 配置文件检查
-- 密码重置提示
-
-## 🌐 客户端连接
-
-### 连接参数
+安装完成后使用以下信息连接：
 - **协议**: FTP
 - **端口**: 21
 - **模式**: 被动模式
-- **编码**: UTF-8
 
-### 推荐客户端
-- [FileZilla](https://filezilla-project.org/) - 跨平台，功能强大
-- [WinSCP](https://winscp.net/) - Windows专用
-- [Cyberduck](https://cyberduck.io/) - macOS专用
+推荐客户端：FileZilla、WinSCP、Cyberduck、Alist
 
-### 目录结构
-用户登录后直接在FTP根目录操作，无需进入子目录。
+## 🔧 常见问题
 
-## 🔧 用户管理
+### 权限550错误
+重新运行脚本，选择"1) 安装FTP服务器"会自动修复权限。
 
-### 查看FTP用户
+### 服务未启动
+使用脚本选择"4) 启动FTP服务"或"5) 重启FTP服务"。
 
-```bash
-# 方法1：查看包含ftp的用户
-grep ftp /etc/passwd
-
-# 方法2：查看home目录下的用户
-ls /home/ | grep -E "(ftp|user)"
-```
-
-### 重置用户密码
-
-```bash
-# 交互式重置
-sudo passwd ftpuser
-
-# 生成随机密码
-new_password=$(openssl rand -base64 12)
-echo "ftpuser:$new_password" | sudo chpasswd
-echo "新密码: $new_password"
-```
-
-### 查看配置信息
-
-```bash
-# 查看FTP根目录配置
-grep local_root /etc/vsftpd.conf
-
-# 查看用户目录结构
-ls -la /home/ftpuser/
-```
-
-## 🛠️ 系统要求
-
-- **操作系统**: Ubuntu 16.04+ / Debian 8+
-- **权限**: root或sudo权限
-- **网络**: 互联网连接（下载软件包）
-- **端口**: 21, 40000-40100
-
-## 🔧 技术特性
-
-### 安全特性
-- 用户chroot隔离环境
-- 禁用匿名访问
-- 完整的目录权限控制
-- 自动配置`allow_writeable_chroot=YES`
-
-### 网络配置
-- 被动模式数据传输
-- 端口范围: 40000-40100
-- 自动防火墙配置
-- IPv6支持可选
-
-### 兼容性
-- 自动检测vsftpd版本
-- 智能处理权限550错误
-- 支持新旧版本配置
-- 错误自动修复
-
-## 🚨 故障排除
-
-### 常见问题
-
-#### 权限550错误（文件删除失败）
-脚本已自动解决，但如仍有问题：
-
-```bash
-# 方法1：重新运行脚本修复权限
-sudo curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh | bash
-# 选择1) 安装FTP服务器，会自动修复权限
-
-# 方法2：手动检查和修复权限
-sudo chown -R ftpuser:ftpuser /root/brec/file
-sudo chmod -R 755 /root/brec/file
-
-# 方法3：检查配置
-grep -E "(delete_enable|write_enable|allow_writeable_chroot)" /etc/vsftpd.conf
-```
-
-**预期输出应包含：**
-```
-delete_enable=YES
-write_enable=YES  
-allow_writeable_chroot=YES
-```
-
-#### 连接超时
-```bash
-# 检查防火墙
-sudo ufw status
-# 检查服务状态  
-systemctl status vsftpd
-```
-
-#### 无法上传/删除文件
-1. 使用管理工具选择"3) 查看FTP状态"检查权限配置
-2. 查看权限状态是否显示"✅ 正常"
-3. 如显示"⚠️ 权限问题"，重新运行安装脚本修复
-
-#### Alist等工具连接问题
-确保使用被动模式连接，端口范围：40000-40100
+### 挂载丢失
+使用脚本选择"6) 修复挂载和权限"。
 
 ## 📄 许可证
 
 本项目采用 [MIT License](LICENSE) 开源协议。
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request 来改进这个项目！
 
 ---
 

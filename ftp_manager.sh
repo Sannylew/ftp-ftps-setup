@@ -10,35 +10,6 @@ echo "📡 FTP 服务器管理工具"
 echo "======================================================"
 echo ""
 
-# 检测执行方式
-if [ -p /dev/stdin ]; then
-    echo "🔍 检测到curl管道执行"
-    echo "💡 为了支持完整交互功能，正在下载脚本到本地..."
-    
-    # 下载脚本到临时文件
-    TEMP_SCRIPT=$(mktemp /tmp/ftp_manager_XXXXXX.sh)
-    
-    # 设置清理函数
-    cleanup() {
-        [ -f "$TEMP_SCRIPT" ] && rm -f "$TEMP_SCRIPT"
-    }
-    trap cleanup EXIT
-    
-    # 下载脚本
-    if curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh > "$TEMP_SCRIPT"; then
-        chmod +x "$TEMP_SCRIPT"
-        echo "✅ 脚本已下载，启动交互式模式..."
-        echo ""
-        
-        # 重新执行脚本，这次不是管道模式
-        exec "$TEMP_SCRIPT"
-    else
-        echo "❌ 下载失败，请检查网络连接"
-        exit 1
-    fi
-    exit 0
-fi
-
 # 检查权限
 if [[ $EUID -ne 0 ]]; then
     echo "❌ 此脚本需要 root 权限，请使用 sudo 运行"
@@ -58,11 +29,14 @@ echo "请选择操作："
 echo "1) 安装 FTP 服务器"
 echo "2) 卸载 FTP 服务器"
 echo "3) 查看 FTP 状态"
+echo "4) 启动 FTP 服务"
+echo "5) 重启 FTP 服务"
+echo "6) 修复挂载和权限"
 echo "0) 退出"
 echo ""
 
 # 现在可以正常交互了
-read -p "请输入选项 (0-3): " choice
+read -p "请输入选项 (0-6): " choice
 
 echo "📋 执行操作: $choice"
 
@@ -392,8 +366,50 @@ EOF
         echo "👤 删除FTP用户..."
         for user in "${ftp_users[@]}"; do
             if id "$user" &>/dev/null; then
-                userdel -r "$user" 2>/dev/null || true
-                echo "✅ 已删除用户: $user"
+                echo "🔄 正在删除用户: $user"
+                
+                # 先停止用户的所有进程
+                echo "   停止用户进程..."
+                pkill -u "$user" 2>/dev/null || true
+                sleep 2
+                
+                # 确保用户未登录
+                echo "   检查用户登录状态..."
+                if who | grep -q "$user"; then
+                    echo "   ⚠️  用户 $user 仍在登录，尝试强制退出..."
+                    pkill -9 -u "$user" 2>/dev/null || true
+                    sleep 2
+                fi
+                
+                # 再次确保挂载点已卸载
+                if mountpoint -q "/home/$user/ftp" 2>/dev/null; then
+                    echo "   卸载残留挂载点..."
+                    umount "/home/$user/ftp" 2>/dev/null || true
+                fi
+                
+                # 删除用户
+                if userdel -r "$user" 2>/dev/null; then
+                    echo "   ✅ 成功删除用户: $user"
+                else
+                    echo "   ⚠️  用户删除遇到问题，尝试强制删除..."
+                    # 强制删除，即使有文件在使用
+                    userdel -f -r "$user" 2>/dev/null || {
+                        echo "   ❌ 无法删除用户 $user，请手动删除:"
+                        echo "      sudo userdel -f -r $user"
+                        echo "      或检查用户是否有进程在运行: ps -u $user"
+                    }
+                fi
+                
+                # 验证删除结果
+                if ! id "$user" &>/dev/null; then
+                    echo "   ✅ 用户 $user 已完全删除"
+                else
+                    echo "   ❌ 用户 $user 仍然存在，需要手动处理"
+                fi
+                
+                echo ""
+            else
+                echo "⚠️  用户 $user 不存在，跳过删除"
             fi
         done
 
@@ -421,11 +437,80 @@ EOF
         echo ""
         echo "📋 已清理："
         echo "   ✅ vsftpd服务和软件包"
-        echo "   ✅ FTP用户: ${ftp_users[*]:-无}"
+        
+        # 检查用户删除状态
+        deleted_users=()
+        remaining_users=()
+        for user in "${ftp_users[@]}"; do
+            if ! id "$user" &>/dev/null; then
+                deleted_users+=("$user")
+            else
+                remaining_users+=("$user")
+            fi
+        done
+        
+        if [ ${#deleted_users[@]} -gt 0 ]; then
+            echo "   ✅ 已删除FTP用户: ${deleted_users[*]}"
+        fi
+        
+        if [ ${#remaining_users[@]} -gt 0 ]; then
+            echo "   ⚠️  未完全删除的用户: ${remaining_users[*]}"
+            echo "      请手动检查和删除这些用户"
+        fi
+        
+        if [ ${#ftp_users[@]} -eq 0 ]; then
+            echo "   ⚠️  未检测到FTP用户"
+        fi
+        
         echo "   ✅ 配置文件和挂载点"
         echo "   ✅ 防火墙规则"
         echo ""
-        echo "✨ 系统已恢复到安装前状态"
+        
+        if [ ${#remaining_users[@]} -gt 0 ]; then
+            echo "⚠️  注意：以下用户未能自动删除，请手动处理："
+            for user in "${remaining_users[@]}"; do
+                echo "   sudo userdel -f -r $user"
+            done
+            echo ""
+        fi
+        
+        echo "✨ 卸载操作已完成"
+        
+        # 询问是否删除脚本
+        echo ""
+        echo "🗑️  FTP服务器已完全卸载，是否同时删除此管理脚本？"
+        read -p "删除脚本文件？(y/n，默认: n): " delete_script
+        delete_script=${delete_script:-n}
+        
+        if [[ "$delete_script" == "y" ]]; then
+            script_path=$(readlink -f "$0")
+            script_name=$(basename "$script_path")
+            
+            echo "🔄 正在删除脚本: $script_name"
+            
+            # 显示倒计时
+            echo "⏰ 5秒后删除脚本，按Ctrl+C取消..."
+            for i in 5 4 3 2 1; do
+                echo -n "$i... "
+                sleep 1
+            done
+            echo ""
+            
+            # 删除脚本
+            if rm -f "$script_path" 2>/dev/null; then
+                echo "✅ 脚本已删除: $script_path"
+                echo "🎉 完全卸载完成！感谢使用！"
+            else
+                echo "❌ 脚本删除失败，请手动删除:"
+                echo "   rm -f $script_path"
+            fi
+            
+            # 由于脚本被删除，直接退出而不显示分割线
+            exit 0
+        else
+            echo "💾 脚本已保留，可重复使用"
+        fi
+        
         echo "======================================================"
         ;;
         
@@ -530,8 +615,9 @@ EOF
             echo "   sudo passwd 用户名"
             echo "   或生成新密码: openssl rand -base64 12"
             echo ""
-            echo "🔧 如果遇到550权限错误，请运行以下命令修复："
-            echo "   sudo $0  # 重新运行脚本，选择安装选项会自动修复权限"
+            echo "🔧 如果遇到550权限错误，请重新运行此脚本："
+            echo "   选择1) 安装FTP服务器 会自动修复权限"
+            echo "   或选择6) 修复挂载和权限"
         fi
         
         # 检查配置文件
@@ -560,7 +646,267 @@ EOF
             echo "❌ 配置文件不存在"
         fi
         
+        # 检查系统中的潜在FTP用户
         echo ""
+        echo "🔍 检查系统中的潜在FTP用户..."
+        potential_users=$(grep -E "(ftp|FTP)" /etc/passwd | grep -v "^ftp:" | cut -d: -f1) 
+        common_ftp_users=("ftpuser" "ethan" "sunny")
+        
+        found_potential=false
+        for user in "${common_ftp_users[@]}"; do
+            if id "$user" &>/dev/null; then
+                if [ "$found_potential" = false ]; then
+                    echo "⚠️  发现可能的FTP用户（无FTP目录）："
+                    found_potential=true
+                fi
+                echo "   - $user (用户存在但无/home/$user/ftp目录)"
+            fi
+        done
+        
+        if [ -n "$potential_users" ]; then
+            if [ "$found_potential" = false ]; then
+                echo "⚠️  发现其他可能的FTP相关用户："
+                found_potential=true
+            fi
+            echo "$potential_users" | while read user; do
+                if [ -n "$user" ]; then
+                    echo "   - $user"
+                fi
+            done
+        fi
+        
+        if [ "$found_potential" = true ]; then
+            echo ""
+            echo "💡 如果这些用户是之前安装遗留的，可以手动删除："
+            echo "   sudo userdel -r 用户名"
+        fi
+        
+        echo ""
+        echo "======================================================"
+        ;;
+        
+    4)
+        echo ""
+        echo "======================================================"
+        echo "🚀 启动 FTP 服务"
+        echo "======================================================"
+        
+        # 检查vsftpd服务
+        echo "🔍 检查vsftpd服务状态..."
+        if systemctl is-active --quiet vsftpd 2>/dev/null; then
+            echo "✅ vsftpd服务已在运行"
+        else
+            echo "⚠️  vsftpd服务未运行，正在启动..."
+            systemctl start vsftpd
+            systemctl enable vsftpd
+            
+            # 验证启动结果
+            if systemctl is-active --quiet vsftpd 2>/dev/null; then
+                echo "✅ vsftpd服务启动成功"
+            else
+                echo "❌ vsftpd服务启动失败"
+                echo "💡 请检查配置文件或查看日志: systemctl status vsftpd"
+                exit 1
+            fi
+        fi
+        
+        # 检查端口监听
+        echo ""
+        echo "🔍 检查端口监听..."
+        sleep 2  # 等待服务完全启动
+        if netstat -ln 2>/dev/null | grep -q ":21 "; then
+            echo "✅ FTP端口21正在监听"
+        else
+            echo "❌ FTP端口21未监听"
+            echo "💡 请检查配置文件或使用选项3查看详细状态"
+        fi
+        
+        echo ""
+        echo "🎉 FTP服务启动操作完成！"
+        echo "💡 使用选项3可查看详细状态"
+        echo "======================================================"
+        ;;
+        
+    5)
+        echo ""
+        echo "======================================================"
+        echo "🔄 重启 FTP 服务"
+        echo "======================================================"
+        
+        # 重启vsftpd服务
+        echo "🔄 正在重启vsftpd服务..."
+        systemctl restart vsftpd
+        systemctl enable vsftpd
+        
+        # 验证重启结果
+        echo "🔍 验证服务状态..."
+        sleep 2  # 等待服务完全启动
+        
+        if systemctl is-active --quiet vsftpd 2>/dev/null; then
+            echo "✅ vsftpd服务重启成功"
+        else
+            echo "❌ vsftpd服务重启失败"
+            echo "💡 请检查配置文件或查看日志: systemctl status vsftpd"
+            exit 1
+        fi
+        
+        # 检查端口监听
+        echo ""
+        echo "🔍 检查端口监听..."
+        if netstat -ln 2>/dev/null | grep -q ":21 "; then
+            echo "✅ FTP端口21正在监听"
+        else
+            echo "❌ FTP端口21未监听"
+            echo "💡 请检查配置文件或使用选项3查看详细状态"
+        fi
+        
+        echo ""
+        echo "🎉 FTP服务重启操作完成！"
+        echo "💡 使用选项3可查看详细状态"
+        echo "======================================================"
+        ;;
+        
+    6)
+        echo ""
+        echo "======================================================"
+        echo "🔧 修复挂载和权限"
+        echo "======================================================"
+        
+        # 自动检测FTP用户
+        echo "🔍 自动检测FTP用户..."
+        ftp_users=()
+
+        for user_dir in /home/*/; do
+            if [ -d "$user_dir" ]; then
+                user=$(basename "$user_dir")
+                if [ -d "/home/$user/ftp" ]; then
+                    ftp_users+=("$user")
+                fi
+            fi
+        done
+
+        if [ ${#ftp_users[@]} -eq 0 ]; then
+            echo "❌ 未找到FTP用户目录"
+            exit 1
+        fi
+
+        echo "📋 检测到以下FTP用户："
+        for user in "${ftp_users[@]}"; do
+            echo "   - $user"
+        done
+
+        echo ""
+        read -p "确认修复所有FTP用户的挂载和权限？(y/n): " confirm
+        
+        if [[ "$confirm" != "y" ]]; then
+            echo "❌ 取消修复"
+            exit 0
+        fi
+
+        echo "🔄 开始修复..."
+
+        # 获取源目录（从fstab或配置文件）
+        source_dir=""
+        if [ -f /etc/fstab ]; then
+            source_dir=$(grep "/ftp" /etc/fstab | head -1 | awk '{print $1}')
+        fi
+        if [ -z "$source_dir" ]; then
+            source_dir="/root/brec/file"  # 默认目录
+        fi
+
+        echo "📁 使用源目录: $source_dir"
+
+        # 修复每个用户
+        for user in "${ftp_users[@]}"; do
+            echo ""
+            echo "🔧 修复用户: $user"
+            
+            ftp_home="/home/$user/ftp"
+            
+            # 确保源目录存在
+            mkdir -p "$source_dir"
+            
+            # 卸载旧挂载（如果存在）
+            if mountpoint -q "$ftp_home" 2>/dev/null; then
+                echo "📤 卸载旧挂载: $ftp_home"
+                umount "$ftp_home" 2>/dev/null || true
+            fi
+            
+            # 设置源目录权限
+            echo "🔧 设置源目录权限..."
+            chown -R "$user":"$user" "$source_dir"
+            chmod -R 755 "$source_dir"
+            
+            # 如果源目录在/root下，设置访问权限
+            if [[ "$source_dir" == /root/* ]]; then
+                echo "⚠️  设置root目录访问权限..."
+                chmod o+x /root 2>/dev/null || true
+                dirname_path=$(dirname "$source_dir")
+                while [ "$dirname_path" != "/" ] && [ "$dirname_path" != "/root" ]; do
+                    chmod o+x "$dirname_path" 2>/dev/null || true
+                    dirname_path=$(dirname "$dirname_path")
+                done
+            fi
+            
+            # 重新创建FTP目录
+            mkdir -p "$ftp_home"
+            chown "$user":"$user" "$ftp_home"
+            chmod 755 "$ftp_home"
+            
+            # 重新挂载
+            echo "🔗 重新挂载: $source_dir -> $ftp_home"
+            mount --bind "$source_dir" "$ftp_home"
+            
+            # 更新fstab
+            if ! grep -q "$ftp_home" /etc/fstab; then
+                echo "$source_dir $ftp_home none bind 0 0" >> /etc/fstab
+            fi
+            
+            # 挂载后权限验证
+            echo "✅ 验证挂载后权限..."
+            chown "$user":"$user" "$ftp_home" 2>/dev/null || true
+            
+            if [ -d "$ftp_home" ]; then
+                find "$ftp_home" -type f -exec chown "$user":"$user" {} \; 2>/dev/null || true
+                find "$ftp_home" -type d -exec chown "$user":"$user" {} \; 2>/dev/null || true
+                find "$ftp_home" -type f -exec chmod 644 {} \; 2>/dev/null || true
+                find "$ftp_home" -type d -exec chmod 755 {} \; 2>/dev/null || true
+            fi
+            
+            echo "✅ 用户 $user 修复完成"
+        done
+
+        # 重启vsftpd服务
+        echo ""
+        echo "🔄 重启vsftpd服务..."
+        systemctl restart vsftpd
+        systemctl enable vsftpd
+
+        # 验证服务状态
+        echo "🔍 验证服务状态..."
+        if systemctl is-active --quiet vsftpd 2>/dev/null; then
+            echo "✅ vsftpd服务正在运行"
+        else
+            echo "❌ vsftpd服务未运行"
+        fi
+
+        if netstat -ln 2>/dev/null | grep -q ":21 "; then
+            echo "✅ FTP端口21正在监听"
+        else
+            echo "❌ FTP端口21未监听"
+        fi
+
+        echo ""
+        echo "======================================================"
+        echo "🎉 挂载和权限修复完成！"
+        echo "======================================================"
+        echo ""
+        echo "📋 已修复的用户："
+        for user in "${ftp_users[@]}"; do
+            echo "   ✅ $user - 挂载和权限已修复"
+        done
+        echo ""
+        echo "💡 建议使用选项3检查详细状态"
         echo "======================================================"
         ;;
         
@@ -571,7 +917,7 @@ EOF
         
     *)
         echo "❌ 无效选项: $choice"
-        echo "💡 请重新运行脚本并选择有效选项 (0-3)"
+        echo "💡 请重新运行脚本并选择有效选项 (0-6)"
         exit 1
         ;;
 esac 
