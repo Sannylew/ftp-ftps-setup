@@ -28,10 +28,25 @@
 
 ## 🚀 快速开始
 
-### 运行管理工具
+### 方式一：一键自动安装（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh | bash
+```
+
+> 📝 **说明：** 此方式会自动使用默认配置安装FTP服务器（用户: ftpuser，目录: /root/brec/file，自动生成密码）
+
+### 方式二：交互式安装
+
+```bash
+# 下载脚本
+wget https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh
+
+# 添加执行权限
+chmod +x ftp_manager.sh
+
+# 运行交互式安装
+sudo ./ftp_manager.sh
 ```
 
 ### 操作菜单
@@ -39,6 +54,16 @@ curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_ma
 ```
 📡 FTP 服务器管理工具
 ======================================================
+🔧 选择的操作: 1
+
+🤖 自动模式：使用默认配置
+👤 FTP用户名: ftpuser (默认)
+📁 服务器目录: /root/brec/file (默认)
+🔐 自动生成密码
+```
+
+**交互式菜单：**
+```
 请选择操作：
 1) 安装 FTP 服务器
 2) 卸载 FTP 服务器  

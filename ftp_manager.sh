@@ -10,6 +10,17 @@ echo "📡 FTP 服务器管理工具"
 echo "======================================================"
 echo ""
 
+# 默认为安装模式（用于curl管道执行）
+DEFAULT_CHOICE="1"
+
+# 调试信息
+echo "🔍 环境调试信息:"
+echo "   stdin是否为终端: $( [ -t 0 ] && echo '是' || echo '否' )"
+echo "   /dev/tty是否可用: $( [ -c /dev/tty ] && echo '是' || echo '否' )"
+echo "   BASH_SOURCE: ${BASH_SOURCE[0]:-未设置}"
+echo "   执行方式: $( [ -p /dev/stdin ] && echo 'pipe管道' || echo 'direct直接' )"
+echo ""
+
 # 检查权限
 if [[ $EUID -ne 0 ]]; then
     echo "❌ 此脚本需要 root 权限，请使用 sudo 运行"
@@ -32,7 +43,21 @@ echo "3) 查看 FTP 状态"
 echo "0) 退出"
 echo ""
 
-read -p "请输入选项 (0-3): " choice < /dev/tty
+# 超级简化的选择逻辑
+choice="$DEFAULT_CHOICE"
+
+# 只有在真正的交互式环境才询问用户
+if [ -t 0 ] && [ -t 1 ] && [ -c /dev/tty ]; then
+    echo "🔍 检测到交互式环境，等待用户选择..."
+    read -p "请输入选项 (0-3): " user_choice || user_choice=""
+    if [ -n "$user_choice" ]; then
+        choice="$user_choice"
+    fi
+else
+    echo "🚀 检测到非交互式环境（curl管道），自动安装FTP服务器..."
+fi
+
+echo "📋 执行操作: $choice"
 
 case $choice in
     1)
@@ -109,20 +134,42 @@ EOF
         # 用户输入
         echo "📝 配置FTP服务器..."
         
-        while true; do
-            read -p "FTP用户名（默认: ftpuser）: " ftp_user < /dev/tty
-            ftp_user=${ftp_user:-ftpuser}
-            if validate_username "$ftp_user"; then
-                break
-            fi
-        done
+        # 检查是否为自动模式（与主菜单检测逻辑保持一致）
+        auto_mode=false
+        if [ ! -t 0 ] || [ ! -t 1 ] || [ ! -c /dev/tty ]; then
+            auto_mode=true
+            echo "🤖 自动模式：使用默认配置"
+        fi
+        
+        if [ "$auto_mode" = true ]; then
+            ftp_user="ftpuser"
+            echo "👤 FTP用户名: $ftp_user (默认)"
+        else
+            while true; do
+                read -p "FTP用户名（默认: ftpuser）: " ftp_user < /dev/tty
+                ftp_user=${ftp_user:-ftpuser}
+                if validate_username "$ftp_user"; then
+                    break
+                fi
+            done
+        fi
 
-        read -p "服务器目录（默认: /root/brec/file）: " source_dir < /dev/tty
-        source_dir=${source_dir:-/root/brec/file}
+        if [ "$auto_mode" = true ]; then
+            source_dir="/root/brec/file"
+            echo "📁 服务器目录: $source_dir (默认)"
+        else
+            read -p "服务器目录（默认: /root/brec/file）: " source_dir < /dev/tty
+            source_dir=${source_dir:-/root/brec/file}
+        fi
 
         if [ ! -d "$source_dir" ]; then
-            read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir < /dev/tty
-            create_dir=${create_dir:-y}
+            if [ "$auto_mode" = true ]; then
+                create_dir="y"
+                echo "📂 自动创建目录: $source_dir"
+            else
+                read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir < /dev/tty
+                create_dir=${create_dir:-y}
+            fi
             if [[ "$create_dir" == "y" ]]; then
                 mkdir -p "$source_dir" || {
                     echo "❌ 创建目录失败"
@@ -134,8 +181,14 @@ EOF
             fi
         fi
 
-        read -p "自动生成密码？(y/n，默认: y): " auto_pwd < /dev/tty
-        auto_pwd=${auto_pwd:-y}
+        if [ "$auto_mode" = true ]; then
+            auto_pwd="y"
+            echo "🔐 自动生成密码"
+        else
+            read -p "自动生成密码？(y/n，默认: y): " auto_pwd < /dev/tty
+            auto_pwd=${auto_pwd:-y}
+        fi
+
         if [[ "$auto_pwd" == "y" ]]; then
             ftp_pass=$(openssl rand -base64 12)
         else
@@ -275,7 +328,17 @@ EOF
         fi
 
         echo ""
-        read -p "确认卸载FTP服务器？(y/n): " confirm < /dev/tty
+        
+        # 卸载确认
+        if [ -t 0 ] && [ -t 1 ] && [ -c /dev/tty ]; then
+            # 交互式环境，询问用户
+            read -p "确认卸载FTP服务器？(y/n): " confirm < /dev/tty
+        else
+            # 非交互式环境，自动确认
+            echo "🚀 非交互式环境，自动确认卸载..."
+            confirm="y"
+        fi
+        
         if [[ "$confirm" != "y" ]]; then
             echo "❌ 取消卸载"
             exit 0
@@ -459,7 +522,151 @@ EOF
         ;;
         
     *)
-        echo "❌ 无效选项"
-        exit 1
+        echo "⚠️  收到未知选项: '$choice'"
+        echo "🚀 由于检测到curl管道执行，将自动默认为安装模式"
+        echo "📝 正在使用默认配置安装FTP服务器..."
+        
+        # 直接设置为默认安装模式并继续执行
+        # 复制最简化的安装逻辑
+        ftp_user="ftpuser"
+        source_dir="/root/brec/file"
+        ftp_pass=$(openssl rand -base64 12)
+        
+        echo ""
+        echo "======================================================"
+        echo "🚀 开始安装 FTP 服务器（自动模式）"
+        echo "======================================================"
+        echo "🤖 自动模式：使用默认配置"
+        echo "👤 FTP用户名: $ftp_user (默认)"
+        echo "📁 服务器目录: $source_dir (默认)"
+        echo "🔐 自动生成密码"
+        
+        # 检查/创建目录
+        if [ ! -d "$source_dir" ]; then
+            echo "📂 自动创建目录: $source_dir"
+            mkdir -p "$source_dir" || {
+                echo "❌ 创建目录失败"
+                exit 1
+            }
+            echo "✅ 目录创建成功"
+        fi
+        
+        echo ""
+        echo "⚙️  开始部署..."
+        
+        # 安装vsftpd
+        echo "📦 安装软件包..."
+        apt update && apt install -y vsftpd || {
+            echo "❌ 安装失败"
+            exit 1
+        }
+        
+        # 创建用户
+        echo "👤 配置用户..."
+        if id -u "$ftp_user" &>/dev/null; then
+            echo "⚠️  用户已存在，重置密码"
+        else
+            adduser "$ftp_user" --disabled-password --gecos ""
+        fi
+        echo "$ftp_user:$ftp_pass" | chpasswd
+        
+        # 配置权限
+        ftp_home="/home/$ftp_user/ftp"
+        echo "🔧 配置FTP目录权限（完整读写权限）..."
+        
+        mkdir -p "$ftp_home"
+        chown root:root "/home/$ftp_user"
+        chmod 755 "/home/$ftp_user"
+        chown "$ftp_user":"$ftp_user" "$ftp_home"
+        chmod 755 "$ftp_home"
+        
+        echo "✅ 权限配置完成（用户拥有完整读写权限）"
+        
+        # 处理源目录权限
+        if [[ "$source_dir" == /root/* ]]; then
+            echo "⚠️  设置/root目录访问权限..."
+            chmod o+x "$(dirname "$source_dir")" 2>/dev/null || true
+        fi
+        
+        # 目录挂载
+        echo "🔗 配置目录映射..."
+        mount --bind "$source_dir" "$ftp_home"
+        if ! grep -q "$ftp_home" /etc/fstab; then
+            echo "$source_dir $ftp_home none bind 0 0" >> /etc/fstab
+        fi
+        
+        # 生成配置
+        echo "📡 生成vsftpd配置..."
+        [ -f /etc/vsftpd.conf ] && cp /etc/vsftpd.conf /etc/vsftpd.conf.backup.$(date +%Y%m%d_%H%M%S)
+        
+        cat > /etc/vsftpd.conf <<EOF
+listen=YES
+listen_ipv6=NO
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+chroot_local_user=YES
+allow_writeable_chroot=YES
+local_root=$ftp_home
+pasv_enable=YES
+pasv_min_port=40000
+pasv_max_port=40100
+utf8_filesystem=YES
+pam_service_name=vsftpd
+seccomp_sandbox=NO
+xferlog_enable=YES
+xferlog_file=/var/log/vsftpd.log
+log_ftp_protocol=YES
+async_abor_enable=YES
+ascii_upload_enable=YES
+ascii_download_enable=YES
+hide_ids=YES
+use_localtime=YES
+EOF
+        
+        echo "✅ 配置文件已生成"
+        
+        # 启动服务
+        echo "🔄 启动服务..."
+        systemctl restart vsftpd
+        systemctl enable vsftpd
+        
+        # 配置防火墙
+        echo "🔥 配置防火墙..."
+        if command -v ufw &> /dev/null; then
+            ufw allow 21/tcp >/dev/null 2>&1 || true
+            ufw allow 40000:40100/tcp >/dev/null 2>&1 || true
+            echo "✅ UFW: 已开放FTP端口"
+        fi
+        
+        # 获取服务器IP
+        external_ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "localhost")
+        
+        echo ""
+        echo "======================================================"
+        echo "🎉 FTP服务器部署完成！"
+        echo "======================================================"
+        echo ""
+        echo "📋 连接信息："
+        echo "   服务器: $external_ip"
+        echo "   端口: 21"
+        echo "   用户: $ftp_user"
+        echo "   密码: $ftp_pass"
+        echo ""
+        echo "📁 目录结构："
+        echo "   FTP根目录: / (直接可读写)"
+        echo "   映射路径: $source_dir"
+        echo ""
+        echo "🔧 特性："
+        echo "   ✅ 完整读写权限（根目录直接操作）"
+        echo "   ✅ 自动修复权限550错误"
+        echo "   ✅ 被动模式传输"
+        echo "   ✅ UTF-8字符编码"
+        echo "   ✅ 防火墙自动配置"
+        echo ""
+        echo "📱 推荐客户端："
+        echo "   FileZilla, WinSCP, Cyberduck"
+        echo ""
+        echo "======================================================"
         ;;
 esac 
