@@ -10,16 +10,34 @@ echo "📡 FTP 服务器管理工具"
 echo "======================================================"
 echo ""
 
-# 默认为安装模式（用于curl管道执行）
-DEFAULT_CHOICE="1"
-
-# 调试信息
-echo "🔍 环境调试信息:"
-echo "   stdin是否为终端: $( [ -t 0 ] && echo '是' || echo '否' )"
-echo "   /dev/tty是否可用: $( [ -c /dev/tty ] && echo '是' || echo '否' )"
-echo "   BASH_SOURCE: ${BASH_SOURCE[0]:-未设置}"
-echo "   执行方式: $( [ -p /dev/stdin ] && echo 'pipe管道' || echo 'direct直接' )"
-echo ""
+# 检测执行方式
+if [ -p /dev/stdin ]; then
+    echo "🔍 检测到curl管道执行"
+    echo "💡 为了支持完整交互功能，正在下载脚本到本地..."
+    
+    # 下载脚本到临时文件
+    TEMP_SCRIPT=$(mktemp /tmp/ftp_manager_XXXXXX.sh)
+    
+    # 设置清理函数
+    cleanup() {
+        [ -f "$TEMP_SCRIPT" ] && rm -f "$TEMP_SCRIPT"
+    }
+    trap cleanup EXIT
+    
+    # 下载脚本
+    if curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh > "$TEMP_SCRIPT"; then
+        chmod +x "$TEMP_SCRIPT"
+        echo "✅ 脚本已下载，启动交互式模式..."
+        echo ""
+        
+        # 重新执行脚本，这次不是管道模式
+        exec "$TEMP_SCRIPT"
+    else
+        echo "❌ 下载失败，请检查网络连接"
+        exit 1
+    fi
+    exit 0
+fi
 
 # 检查权限
 if [[ $EUID -ne 0 ]]; then
@@ -43,19 +61,8 @@ echo "3) 查看 FTP 状态"
 echo "0) 退出"
 echo ""
 
-# 超级简化的选择逻辑
-choice="$DEFAULT_CHOICE"
-
-# 只有在真正的交互式环境才询问用户
-if [ -t 0 ] && [ -t 1 ] && [ -c /dev/tty ]; then
-    echo "🔍 检测到交互式环境，等待用户选择..."
-    read -p "请输入选项 (0-3): " user_choice || user_choice=""
-    if [ -n "$user_choice" ]; then
-        choice="$user_choice"
-    fi
-else
-    echo "🚀 检测到非交互式环境（curl管道），自动安装FTP服务器..."
-fi
+# 现在可以正常交互了
+read -p "请输入选项 (0-3): " choice
 
 echo "📋 执行操作: $choice"
 
@@ -79,20 +86,43 @@ case $choice in
         # 智能权限配置
         configure_smart_permissions() {
             local user="$1"
+            local source_dir="$2"
             local user_home="/home/$user"
             local ftp_home="$user_home/ftp"
             
-            echo "🔧 配置FTP目录权限（完整读写权限）..."
+            echo "🔧 配置FTP目录权限（完整读写删除权限）..."
             
             mkdir -p "$ftp_home"
             
+            # 配置用户主目录
             chown root:root "$user_home"
             chmod 755 "$user_home"
             
+            # 确保源目录存在
+            mkdir -p "$source_dir"
+            
+            # 关键修复：设置源目录权限，确保FTP用户有完整权限
+            echo "🔧 设置源目录权限: $source_dir"
+            chown -R "$user":"$user" "$source_dir"
+            chmod -R 755 "$source_dir"
+            
+            # 如果源目录在/root下，需要特殊处理
+            if [[ "$source_dir" == /root/* ]]; then
+                echo "⚠️  检测到root目录，设置访问权限..."
+                # 设置父目录可执行权限
+                chmod o+x /root 2>/dev/null || true
+                dirname_path=$(dirname "$source_dir")
+                while [ "$dirname_path" != "/" ] && [ "$dirname_path" != "/root" ]; do
+                    chmod o+x "$dirname_path" 2>/dev/null || true
+                    dirname_path=$(dirname "$dirname_path")
+                done
+            fi
+            
+            # 设置FTP挂载点权限（挂载前）
             chown "$user":"$user" "$ftp_home"
             chmod 755 "$ftp_home"
             
-            echo "✅ 权限配置完成（用户拥有完整读写权限）"
+            echo "✅ 权限配置完成（用户拥有完整读写删除权限）"
         }
 
         # 生成配置文件
@@ -126,6 +156,16 @@ ascii_upload_enable=YES
 ascii_download_enable=YES
 hide_ids=YES
 use_localtime=YES
+# 明确启用删除和重命名权限
+delete_enable=YES
+rename_enable=YES
+rmdir_enable=YES
+# 文件权限设置
+file_open_mode=0755
+local_umask=022
+# 禁用一些限制
+deny_file={}
+hide_file={}
 EOF
 
             echo "✅ 配置文件已生成"
@@ -134,42 +174,20 @@ EOF
         # 用户输入
         echo "📝 配置FTP服务器..."
         
-        # 检查是否为自动模式（与主菜单检测逻辑保持一致）
-        auto_mode=false
-        if [ ! -t 0 ] || [ ! -t 1 ] || [ ! -c /dev/tty ]; then
-            auto_mode=true
-            echo "🤖 自动模式：使用默认配置"
-        fi
-        
-        if [ "$auto_mode" = true ]; then
-            ftp_user="ftpuser"
-            echo "👤 FTP用户名: $ftp_user (默认)"
-        else
-            while true; do
-                read -p "FTP用户名（默认: ftpuser）: " ftp_user < /dev/tty
-                ftp_user=${ftp_user:-ftpuser}
-                if validate_username "$ftp_user"; then
-                    break
-                fi
-            done
-        fi
+        while true; do
+            read -p "FTP用户名（默认: ftpuser）: " ftp_user
+            ftp_user=${ftp_user:-ftpuser}
+            if validate_username "$ftp_user"; then
+                break
+            fi
+        done
 
-        if [ "$auto_mode" = true ]; then
-            source_dir="/root/brec/file"
-            echo "📁 服务器目录: $source_dir (默认)"
-        else
-            read -p "服务器目录（默认: /root/brec/file）: " source_dir < /dev/tty
-            source_dir=${source_dir:-/root/brec/file}
-        fi
+        read -p "服务器目录（默认: /root/brec/file）: " source_dir
+        source_dir=${source_dir:-/root/brec/file}
 
         if [ ! -d "$source_dir" ]; then
-            if [ "$auto_mode" = true ]; then
-                create_dir="y"
-                echo "📂 自动创建目录: $source_dir"
-            else
-                read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir < /dev/tty
-                create_dir=${create_dir:-y}
-            fi
+            read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir
+            create_dir=${create_dir:-y}
             if [[ "$create_dir" == "y" ]]; then
                 mkdir -p "$source_dir" || {
                     echo "❌ 创建目录失败"
@@ -181,19 +199,14 @@ EOF
             fi
         fi
 
-        if [ "$auto_mode" = true ]; then
-            auto_pwd="y"
-            echo "🔐 自动生成密码"
-        else
-            read -p "自动生成密码？(y/n，默认: y): " auto_pwd < /dev/tty
-            auto_pwd=${auto_pwd:-y}
-        fi
+        read -p "自动生成密码？(y/n，默认: y): " auto_pwd
+        auto_pwd=${auto_pwd:-y}
 
         if [[ "$auto_pwd" == "y" ]]; then
             ftp_pass=$(openssl rand -base64 12)
         else
             while true; do
-                read -s -p "FTP密码（至少8位）: " ftp_pass < /dev/tty
+                read -s -p "FTP密码（至少8位）: " ftp_pass
                 echo
                 if [ ${#ftp_pass} -ge 8 ]; then
                     break
@@ -223,13 +236,7 @@ EOF
 
         # 配置权限
         ftp_home="/home/$ftp_user/ftp"
-        configure_smart_permissions "$ftp_user"
-
-        # 处理源目录权限
-        if [[ "$source_dir" == /root/* ]]; then
-            echo "⚠️  设置/root目录访问权限..."
-            chmod o+x "$(dirname "$source_dir")" 2>/dev/null || true
-        fi
+        configure_smart_permissions "$ftp_user" "$source_dir"
 
         # 目录挂载
         echo "🔗 配置目录映射..."
@@ -237,6 +244,22 @@ EOF
         if ! grep -q "$ftp_home" /etc/fstab; then
             echo "$source_dir $ftp_home none bind 0 0" >> /etc/fstab
         fi
+        
+        # 挂载后权限验证和修复
+        echo "🔧 验证挂载后权限..."
+        
+        # 确保挂载后的目录权限正确
+        chown "$ftp_user":"$ftp_user" "$ftp_home" 2>/dev/null || true
+        
+        # 检查并修复挂载目录中的文件权限
+        if [ -d "$ftp_home" ]; then
+            find "$ftp_home" -type f -exec chown "$ftp_user":"$ftp_user" {} \; 2>/dev/null || true
+            find "$ftp_home" -type d -exec chown "$ftp_user":"$ftp_user" {} \; 2>/dev/null || true
+            find "$ftp_home" -type f -exec chmod 644 {} \; 2>/dev/null || true
+            find "$ftp_home" -type d -exec chmod 755 {} \; 2>/dev/null || true
+        fi
+        
+        echo "✅ 权限验证完成"
 
         # 生成配置
         generate_optimal_config "$ftp_home"
@@ -269,18 +292,23 @@ EOF
         echo "   密码: $ftp_pass"
         echo ""
         echo "📁 目录结构："
-        echo "   FTP根目录: / (直接可读写)"
+        echo "   FTP根目录: / (直接可读写删除)"
         echo "   映射路径: $source_dir"
         echo ""
         echo "🔧 特性："
-        echo "   ✅ 完整读写权限（根目录直接操作）"
+        echo "   ✅ 完整读写删除权限（已修复550错误）"
+        echo "   ✅ 支持文件删除、重命名、创建目录"
         echo "   ✅ 自动修复权限550错误"
         echo "   ✅ 被动模式传输"
         echo "   ✅ UTF-8字符编码"
         echo "   ✅ 防火墙自动配置"
         echo ""
         echo "📱 推荐客户端："
-        echo "   FileZilla, WinSCP, Cyberduck"
+        echo "   FileZilla, WinSCP, Cyberduck, Alist"
+        echo ""
+        echo "🔍 测试建议："
+        echo "   连接后尝试上传、下载、删除文件验证权限"
+        echo "   如仍遇到550错误，请运行状态检查功能"
         echo ""
         echo "======================================================"
         ;;
@@ -330,14 +358,7 @@ EOF
         echo ""
         
         # 卸载确认
-        if [ -t 0 ] && [ -t 1 ] && [ -c /dev/tty ]; then
-            # 交互式环境，询问用户
-            read -p "确认卸载FTP服务器？(y/n): " confirm < /dev/tty
-        else
-            # 非交互式环境，自动确认
-            echo "🚀 非交互式环境，自动确认卸载..."
-            confirm="y"
-        fi
+        read -p "确认卸载FTP服务器？(y/n): " confirm
         
         if [[ "$confirm" != "y" ]]; then
             echo "❌ 取消卸载"
@@ -456,6 +477,13 @@ EOF
                     if [ -d "/home/$user/ftp" ]; then
                         dir_perms=$(ls -ld "/home/$user/ftp" | awk '{print $1, $3, $4}')
                         echo "   目录权限: $dir_perms"
+                        
+                        # 检查权限问题
+                        if [[ "$dir_perms" =~ $user.*$user ]]; then
+                            echo "   权限状态: ✅ 正常"
+                        else
+                            echo "   权限状态: ⚠️  可能有问题"
+                        fi
                     fi
                     
                     # 显示挂载信息
@@ -465,6 +493,17 @@ EOF
                         mount_source=$(mount | grep "/home/$user/ftp" | awk '{print $1}')
                         if [ -n "$mount_source" ]; then
                             echo "   映射源: $mount_source"
+                            
+                            # 检查源目录权限
+                            if [ -d "$mount_source" ]; then
+                                source_perms=$(ls -ld "$mount_source" | awk '{print $1, $3, $4}')
+                                echo "   源目录权限: $source_perms"
+                                if [[ "$source_perms" =~ $user.*$user ]]; then
+                                    echo "   源权限状态: ✅ 正常"
+                                else
+                                    echo "   源权限状态: ⚠️  权限问题 - 可能导致550错误"
+                                fi
+                            fi
                         fi
                     else
                         echo "   挂载状态: ❌ 未挂载"
@@ -490,6 +529,9 @@ EOF
             echo "💡 提示: 密码无法直接查看，如需重置请使用："
             echo "   sudo passwd 用户名"
             echo "   或生成新密码: openssl rand -base64 12"
+            echo ""
+            echo "🔧 如果遇到550权限错误，请运行以下命令修复："
+            echo "   sudo $0  # 重新运行脚本，选择安装选项会自动修复权限"
         fi
         
         # 检查配置文件
@@ -503,9 +545,15 @@ EOF
                 echo "⚠️  未配置550错误修复"
             fi
             
+            if grep -q "delete_enable=YES" /etc/vsftpd.conf; then
+                echo "✅ 已启用删除权限"
+            else
+                echo "⚠️  删除权限可能未启用"
+            fi
+            
             # 显示关键配置
             echo "📋 关键配置:"
-            grep -E "^(local_root|pasv_min_port|pasv_max_port|chroot_local_user)" /etc/vsftpd.conf 2>/dev/null | while read line; do
+            grep -E "^(local_root|pasv_min_port|pasv_max_port|chroot_local_user|delete_enable|write_enable)" /etc/vsftpd.conf 2>/dev/null | while read line; do
                 echo "   $line"
             done
         else
@@ -522,151 +570,8 @@ EOF
         ;;
         
     *)
-        echo "⚠️  收到未知选项: '$choice'"
-        echo "🚀 由于检测到curl管道执行，将自动默认为安装模式"
-        echo "📝 正在使用默认配置安装FTP服务器..."
-        
-        # 直接设置为默认安装模式并继续执行
-        # 复制最简化的安装逻辑
-        ftp_user="ftpuser"
-        source_dir="/root/brec/file"
-        ftp_pass=$(openssl rand -base64 12)
-        
-        echo ""
-        echo "======================================================"
-        echo "🚀 开始安装 FTP 服务器（自动模式）"
-        echo "======================================================"
-        echo "🤖 自动模式：使用默认配置"
-        echo "👤 FTP用户名: $ftp_user (默认)"
-        echo "📁 服务器目录: $source_dir (默认)"
-        echo "🔐 自动生成密码"
-        
-        # 检查/创建目录
-        if [ ! -d "$source_dir" ]; then
-            echo "📂 自动创建目录: $source_dir"
-            mkdir -p "$source_dir" || {
-                echo "❌ 创建目录失败"
-                exit 1
-            }
-            echo "✅ 目录创建成功"
-        fi
-        
-        echo ""
-        echo "⚙️  开始部署..."
-        
-        # 安装vsftpd
-        echo "📦 安装软件包..."
-        apt update && apt install -y vsftpd || {
-            echo "❌ 安装失败"
-            exit 1
-        }
-        
-        # 创建用户
-        echo "👤 配置用户..."
-        if id -u "$ftp_user" &>/dev/null; then
-            echo "⚠️  用户已存在，重置密码"
-        else
-            adduser "$ftp_user" --disabled-password --gecos ""
-        fi
-        echo "$ftp_user:$ftp_pass" | chpasswd
-        
-        # 配置权限
-        ftp_home="/home/$ftp_user/ftp"
-        echo "🔧 配置FTP目录权限（完整读写权限）..."
-        
-        mkdir -p "$ftp_home"
-        chown root:root "/home/$ftp_user"
-        chmod 755 "/home/$ftp_user"
-        chown "$ftp_user":"$ftp_user" "$ftp_home"
-        chmod 755 "$ftp_home"
-        
-        echo "✅ 权限配置完成（用户拥有完整读写权限）"
-        
-        # 处理源目录权限
-        if [[ "$source_dir" == /root/* ]]; then
-            echo "⚠️  设置/root目录访问权限..."
-            chmod o+x "$(dirname "$source_dir")" 2>/dev/null || true
-        fi
-        
-        # 目录挂载
-        echo "🔗 配置目录映射..."
-        mount --bind "$source_dir" "$ftp_home"
-        if ! grep -q "$ftp_home" /etc/fstab; then
-            echo "$source_dir $ftp_home none bind 0 0" >> /etc/fstab
-        fi
-        
-        # 生成配置
-        echo "📡 生成vsftpd配置..."
-        [ -f /etc/vsftpd.conf ] && cp /etc/vsftpd.conf /etc/vsftpd.conf.backup.$(date +%Y%m%d_%H%M%S)
-        
-        cat > /etc/vsftpd.conf <<EOF
-listen=YES
-listen_ipv6=NO
-anonymous_enable=NO
-local_enable=YES
-write_enable=YES
-chroot_local_user=YES
-allow_writeable_chroot=YES
-local_root=$ftp_home
-pasv_enable=YES
-pasv_min_port=40000
-pasv_max_port=40100
-utf8_filesystem=YES
-pam_service_name=vsftpd
-seccomp_sandbox=NO
-xferlog_enable=YES
-xferlog_file=/var/log/vsftpd.log
-log_ftp_protocol=YES
-async_abor_enable=YES
-ascii_upload_enable=YES
-ascii_download_enable=YES
-hide_ids=YES
-use_localtime=YES
-EOF
-        
-        echo "✅ 配置文件已生成"
-        
-        # 启动服务
-        echo "🔄 启动服务..."
-        systemctl restart vsftpd
-        systemctl enable vsftpd
-        
-        # 配置防火墙
-        echo "🔥 配置防火墙..."
-        if command -v ufw &> /dev/null; then
-            ufw allow 21/tcp >/dev/null 2>&1 || true
-            ufw allow 40000:40100/tcp >/dev/null 2>&1 || true
-            echo "✅ UFW: 已开放FTP端口"
-        fi
-        
-        # 获取服务器IP
-        external_ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "localhost")
-        
-        echo ""
-        echo "======================================================"
-        echo "🎉 FTP服务器部署完成！"
-        echo "======================================================"
-        echo ""
-        echo "📋 连接信息："
-        echo "   服务器: $external_ip"
-        echo "   端口: 21"
-        echo "   用户: $ftp_user"
-        echo "   密码: $ftp_pass"
-        echo ""
-        echo "📁 目录结构："
-        echo "   FTP根目录: / (直接可读写)"
-        echo "   映射路径: $source_dir"
-        echo ""
-        echo "🔧 特性："
-        echo "   ✅ 完整读写权限（根目录直接操作）"
-        echo "   ✅ 自动修复权限550错误"
-        echo "   ✅ 被动模式传输"
-        echo "   ✅ UTF-8字符编码"
-        echo "   ✅ 防火墙自动配置"
-        echo ""
-        echo "📱 推荐客户端："
-        echo "   FileZilla, WinSCP, Cyberduck"
-        echo ""
-        echo "======================================================"
+        echo "❌ 无效选项: $choice"
+        echo "💡 请重新运行脚本并选择有效选项 (0-3)"
+        exit 1
         ;;
 esac 

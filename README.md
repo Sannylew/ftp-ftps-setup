@@ -14,13 +14,13 @@
 [![Shell](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![Platform](https://img.shields.io/badge/Platform-Ubuntu%2FDebian-orange.svg)]()
 
-一键式交互FTP服务器管理工具，支持自动安装、卸载和状态监控，完美解决权限550错误。
+一键式交互FTP服务器管理工具，支持自动安装、卸载和状态监控，**彻底解决权限550错误和文件删除问题**。
 
 ## ✨ 特色功能
 
 - 🚀 **一键部署** - 单条命令完成FTP服务器部署
 - 🔧 **交互式管理** - 直观的菜单界面，操作简单
-- 🛡️ **自动修复** - 智能解决权限550错误和版本兼容性问题
+- 🛡️ **权限修复** - 智能解决权限550错误，支持文件删除、重命名、创建
 - 📊 **状态监控** - 实时查看FTP服务器状态和用户信息
 - 🗑️ **完全卸载** - 智能检测并彻底清理所有相关组件
 - 🔒 **安全设计** - 用户chroot隔离，完整权限控制
@@ -28,15 +28,15 @@
 
 ## 🚀 快速开始
 
-### 方式一：一键自动安装（推荐）
+### 方式一：一键交互式安装（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh | bash
 ```
 
-> 📝 **说明：** 此方式会自动使用默认配置安装FTP服务器（用户: ftpuser，目录: /root/brec/file，自动生成密码）
+> 📝 **说明：** 脚本会自动检测curl管道执行，下载到本地后启动完整的交互式界面
 
-### 方式二：交互式安装
+### 方式二：手动下载安装
 
 ```bash
 # 下载脚本
@@ -49,27 +49,29 @@ chmod +x ftp_manager.sh
 sudo ./ftp_manager.sh
 ```
 
-### 操作菜单
+### 交互式菜单
+
+两种方式都会显示完整的交互式菜单：
 
 ```
 📡 FTP 服务器管理工具
 ======================================================
-🔧 选择的操作: 1
+🔍 检测到curl管道执行
+💡 为了支持完整交互功能，正在下载脚本到本地...
+✅ 脚本已下载，启动交互式模式...
 
-🤖 自动模式：使用默认配置
-👤 FTP用户名: ftpuser (默认)
-📁 服务器目录: /root/brec/file (默认)
-🔐 自动生成密码
-```
-
-**交互式菜单：**
-```
 请选择操作：
 1) 安装 FTP 服务器
 2) 卸载 FTP 服务器  
 3) 查看 FTP 状态
 0) 退出
 ```
+
+**功能特点：**
+- ✅ **完整交互** - curl方式也支持所有交互功能
+- 🔧 **智能检测** - 自动处理管道执行问题
+- 📊 **多功能** - 安装、卸载、状态查看一体化
+- 🛡️ **安全可靠** - 权限检查和确认机制
 
 ## 📋 功能详解
 
@@ -178,11 +180,27 @@ ls -la /home/ftpuser/
 
 ### 常见问题
 
-#### 权限550错误
-脚本自动解决，如仍有问题：
+#### 权限550错误（文件删除失败）
+脚本已自动解决，但如仍有问题：
+
 ```bash
-# 检查配置
-grep allow_writeable_chroot /etc/vsftpd.conf
+# 方法1：重新运行脚本修复权限
+sudo curl -fsSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/ftp_manager.sh | bash
+# 选择1) 安装FTP服务器，会自动修复权限
+
+# 方法2：手动检查和修复权限
+sudo chown -R ftpuser:ftpuser /root/brec/file
+sudo chmod -R 755 /root/brec/file
+
+# 方法3：检查配置
+grep -E "(delete_enable|write_enable|allow_writeable_chroot)" /etc/vsftpd.conf
+```
+
+**预期输出应包含：**
+```
+delete_enable=YES
+write_enable=YES  
+allow_writeable_chroot=YES
 ```
 
 #### 连接超时
@@ -193,8 +211,13 @@ sudo ufw status
 systemctl status vsftpd
 ```
 
-#### 无法上传文件
-使用管理工具选择"3) 查看FTP状态"检查权限配置。
+#### 无法上传/删除文件
+1. 使用管理工具选择"3) 查看FTP状态"检查权限配置
+2. 查看权限状态是否显示"✅ 正常"
+3. 如显示"⚠️ 权限问题"，重新运行安装脚本修复
+
+#### Alist等工具连接问题
+确保使用被动模式连接，端口范围：40000-40100
 
 ## 📄 许可证
 
