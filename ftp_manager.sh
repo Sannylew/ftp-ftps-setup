@@ -32,7 +32,7 @@ echo "3) 查看 FTP 状态"
 echo "0) 退出"
 echo ""
 
-read -p "请输入选项 (0-3): " choice
+read -p "请输入选项 (0-3): " choice < /dev/tty
 
 case $choice in
     1)
@@ -110,18 +110,18 @@ EOF
         echo "📝 配置FTP服务器..."
         
         while true; do
-            read -p "FTP用户名（默认: ftpuser）: " ftp_user
+            read -p "FTP用户名（默认: ftpuser）: " ftp_user < /dev/tty
             ftp_user=${ftp_user:-ftpuser}
             if validate_username "$ftp_user"; then
                 break
             fi
         done
 
-        read -p "服务器目录（默认: /root/brec/file）: " source_dir
+        read -p "服务器目录（默认: /root/brec/file）: " source_dir < /dev/tty
         source_dir=${source_dir:-/root/brec/file}
 
         if [ ! -d "$source_dir" ]; then
-            read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir
+            read -p "目录不存在，是否创建？(y/n，默认: y): " create_dir < /dev/tty
             create_dir=${create_dir:-y}
             if [[ "$create_dir" == "y" ]]; then
                 mkdir -p "$source_dir" || {
@@ -134,13 +134,13 @@ EOF
             fi
         fi
 
-        read -p "自动生成密码？(y/n，默认: y): " auto_pwd
+        read -p "自动生成密码？(y/n，默认: y): " auto_pwd < /dev/tty
         auto_pwd=${auto_pwd:-y}
         if [[ "$auto_pwd" == "y" ]]; then
             ftp_pass=$(openssl rand -base64 12)
         else
             while true; do
-                read -s -p "FTP密码（至少8位）: " ftp_pass
+                read -s -p "FTP密码（至少8位）: " ftp_pass < /dev/tty
                 echo
                 if [ ${#ftp_pass} -ge 8 ]; then
                     break
@@ -263,7 +263,7 @@ EOF
 
         if [ ${#ftp_users[@]} -eq 0 ]; then
             echo "❌ 未找到FTP用户"
-            read -p "请手动输入FTP用户名（留空跳过）: " manual_user
+            read -p "请手动输入FTP用户名（留空跳过）: " manual_user < /dev/tty
             if [ -n "$manual_user" ]; then
                 ftp_users+=("$manual_user")
             fi
@@ -275,7 +275,7 @@ EOF
         fi
 
         echo ""
-        read -p "确认卸载FTP服务器？(y/n): " confirm
+        read -p "确认卸载FTP服务器？(y/n): " confirm < /dev/tty
         if [[ "$confirm" != "y" ]]; then
             echo "❌ 取消卸载"
             exit 0
