@@ -1,8 +1,14 @@
-# BRCE FTP零延迟配置脚本说明
+# BRCE FTP零延迟配置脚本说明 (v2.1)
 
 ## 📋 脚本概述
 
-`brce_ftp_setup.sh` 是一个专门为BRCE程序设计的零延迟FTP配置工具，彻底解决传统bind mount方式的文件修改延迟问题。
+`brce_ftp_setup.sh` (v2.1) 是一个专门为BRCE程序设计的零延迟FTP配置工具，彻底解决传统bind mount方式的文件修改延迟问题。
+
+**v2.1 新增功能：**
+- 🔧 **智能卸载选项**：选择完全卸载或仅卸载配置
+- 🗑️ **脚本管理**：卸载时可选择保留或删除脚本文件
+- 📋 **配置信息显示**：卸载前显示详细配置信息
+- 🔄 **配置恢复**：自动恢复原始vsftpd配置
 
 **专门解决的核心问题：**
 - ❌ root删除文件，FTP客户端还能看到
@@ -17,7 +23,7 @@
 ## 🎯 专门特性
 
 ### 🔧 **专用配置**
-- **固定目录**: `/opt/brce/file` (BRCE程序文件目录)
+- **固定目录**: `/opt/brec/file` (BRCE程序文件目录，root用户目录)
 - **固定用户**: `sunny` (FTP用户名)
 - **自动密码**: OpenSSL随机生成16位安全密码
 - **零延迟**: rsync+inotify实时监控同步
@@ -106,7 +112,7 @@ sudo ./brce_ftp_setup.sh
 
 ### 3. 选择安装
 ```bash
-请选择操作：
+请选择操作
 1) 🚀 安装/配置BRCE FTP服务 (零延迟)
 
 请输入选项 (0-5): 1
@@ -114,17 +120,17 @@ sudo ./brce_ftp_setup.sh
 
 ### 4. 确认配置
 ```bash
-🎯 目标目录: /opt/brce/file
+🎯 目标目录: /opt/brec/file
 👤 FTP用户: sunny
-⚡ 特性: 实时同步，零延迟
+🔑 实时同步，零延迟
 
-是否使用零延迟实时同步？(y/n，默认: y): [回车]
+是否使用零延迟实时同步？(y/n，默认 y): [回车]
 ```
 
 ### 5. 密码设置
 ```bash
-自动生成密码？(y/n，默认: y): [回车]
-🔑 自动生成的密码: K3mN8pQ2vX9s  # 记住这个密码
+自动生成密码 (y/n，默认 y): [回车]
+🔑 自动生成的密码 K3mN8pQ2vX9s  # 记住这个密码
 ```
 
 ### 6. 等待完成
@@ -133,19 +139,19 @@ sudo ./brce_ftp_setup.sh
 ## 📱 FTP客户端连接
 
 ### 连接信息
-安装完成后获得的连接信息：
+安装完成后获得的连接信息。
 ```bash
-📋 连接信息：
-   服务器: 192.168.1.100  # 你的服务器IP
+📋 连接信息
+   服务: 192.168.1.100  # 你的服务器IP
    端口: 21
    用户: sunny
    密码: [自动生成的密码]
-   访问目录: /opt/brce/file
+   访问目录: /opt/brec/file
 ```
 
 ### 🖥️ FileZilla连接
 1. **主机**: `ftp://你的服务器IP`
-2. **用户名**: `sunny`
+2. **用户**: `sunny`
 3. **密码**: `脚本显示的密码`
 4. **端口**: `21`
 5. **模式**: 被动模式(PASV)
@@ -167,7 +173,7 @@ Password: [脚本显示的密码]
 
 ### 1) 安装/配置BRCE FTP服务 (零延迟)
 **功能**: 完整的零延迟FTP服务安装配置
-- 安装依赖软件包 (vsftpd, rsync, inotify-tools)
+- 安装依赖软件 (vsftpd, rsync, inotify-tools)
 - 创建sunny用户和随机密码
 - 配置目录权限
 - 创建实时同步脚本
@@ -178,15 +184,15 @@ Password: [脚本显示的密码]
 ### 2) 查看FTP服务状态
 **功能**: 全面的服务状态检查
 ```bash
-✅ FTP服务运行正常
-✅ 实时同步服务运行正常
-✅ FTP端口21已开启
-✅ FTP用户 sunny 存在
-✅ FTP目录存在: /home/sunny/ftp
-✅ BRCE目录存在: /opt/brce/file
+👍 FTP服务运行正常
+👍 实时同步服务运行正常
+👍 FTP端口21已开放
+👍 FTP用户 sunny 存在
+👍 FTP目录存在: /home/sunny/ftp
+👍 BRCE目录存在: /opt/brec/file
 📁 源目录文件数: 15
 📁 FTP目录文件数: 15
-✅ 文件数量同步正确
+👍 文件数量同步正确
 ```
 
 ### 3) 重启FTP服务
@@ -200,28 +206,44 @@ Password: [脚本显示的密码]
 ```bash
 📝 创建测试文件
 ⏱️  等待3秒检查同步...
-✅ 文件创建同步成功
+👍 文件创建同步成功
 
 📝 修改测试文件...
 ⏱️  等待3秒检查同步...
-✅ 文件修改同步成功
+👍 文件修改同步成功
 
 🗑️ 删除测试文件...
 ⏱️  等待3秒检查同步...
-✅ 文件删除同步成功
+👍 文件删除同步成功
 
-🎉 实时同步功能正常！零延迟确认！
+🎉 实时同步功能正常！零延迟确认。
 ```
 
 ### 5) 卸载FTP服务
-**功能**: 完整清理FTP配置
+**功能**: 智能化完整清理FTP配置
+- 显示当前配置信息
+- 选择卸载方式（完全/仅配置）
 - 停止所有相关服务
 - 删除系统服务文件
 - 删除用户账户
+- 恢复原始配置文件
 - 清理配置文件
+- **新增**：选择是否保留脚本文件
+- **新增**：选择是否卸载vsftpd软件包
 - 保留BRCE目录数据
 
-## ⚡ 零延迟技术原理
+**卸载选项说明**：
+```bash
+🔧 卸载选项：
+1) 完全卸载（包含vsftpd软件包）
+2) 仅卸载BRCE配置（保留vsftpd）
+
+🔄 脚本管理选项：
+- 保留脚本：可随时重新配置
+- 删除脚本：完全清理，自动删除脚本文件
+```
+
+## 零延迟技术原理
 
 ### 🔍 问题分析
 传统bind mount方式的延迟来源：
@@ -233,10 +255,10 @@ Password: [脚本显示的密码]
 零延迟实时同步技术：
 ```bash
 # 监控文件变化
-inotifywait -m -r -e modify,create,delete,move /opt/brce/file
+inotifywait -m -r -e modify,create,delete,move /opt/brec/file
 
 # 立即同步变化
-rsync -av --delete /opt/brce/file/ /home/sunny/ftp/
+rsync -av --delete /opt/brec/file/ /home/sunny/ftp/
 
 # 修复权限
 chown -R sunny:sunny /home/sunny/ftp
@@ -246,8 +268,8 @@ find /home/sunny/ftp -type d -exec chmod 755 {} \;
 
 ### 🔄 工作流程
 ```
-BRCE程序文件变化 → inotify检测 → rsync同步 → 权限修复 → FTP立即可见
-      0.001秒         0.01秒      0.05秒     0.02秒      立即
+BRCE程序文件变化 → inotify检查 → rsync同步 → 权限修复 → FTP立即可见
+      0.001秒        0.01秒     0.05秒    0.02秒     立即
 ```
 
 ## 📊 性能对比
@@ -284,10 +306,10 @@ BRCE程序文件变化 → inotify检测 → rsync同步 → 权限修复 → FT
 协议: FTP (可升级到FTPS)
 端口: 21 (控制端口)
 被动端口: 40000-40100 (数据端口)
-防火墙: 自动配置规则
+防火墙 自动配置规则
 ```
 
-## 🛠️ 故障排除
+## 🛠 故障排除
 
 ### 常见问题
 
@@ -303,11 +325,11 @@ sudo systemctl status brce-ftp-sync
 **症状**: FTP无法写入文件
 **解决**:
 ```bash
-sudo chown -R sunny:sunny /opt/brce/file
-sudo chmod -R 755 /opt/brce/file
+sudo chown -R sunny:sunny /opt/brec/file
+sudo chmod -R 755 /opt/brec/file
 ```
 
-#### 3. 防火墙阻断
+#### 3. 防火墙阻塞
 **症状**: 无法连接FTP
 **解决**:
 ```bash
@@ -352,28 +374,28 @@ sudo systemctl status brce-ftp-sync
 
 | 脚本 | 适用场景 | 延迟 | 配置复杂度 | 资源占用 |
 |------|----------|------|------------|----------|
-| **ftp_manager.sh** | 通用FTP配置 | 有延迟 | 交互配置 | 低 |
+| **ftp_manager.sh** | 通用FTP配置 | 有延迟 | 交互配置 | 无 |
 | **ftp_manager_test.sh** | 测试实时同步 | 零延迟 | 交互配置 | 中等 |
-| **brce_ftp_setup.sh** | BRCE专用零延迟 | 零延迟 | 自动化 | 中等 |
+| **brce_ftp_setup.sh** | BRCE专用零延迟 | 零延迟 | 自动配置 | 中等 |
 
 ### 选择建议
 - **追求简单**: 使用 `ftp_manager.sh`
 - **测试功能**: 使用 `ftp_manager_test.sh`  
-- **BRCE专用**: 使用 `brce_ftp_setup.sh` ⭐
+- **BRCE专用**: 使用 `brce_ftp_setup.sh` 
 
 ## 💡 使用建议
 
 ### 适合场景
-✅ **BRCE程序文件访问**  
-✅ **频繁文件变化场景**  
-✅ **要求零延迟响应**  
-✅ **自动化部署需求**  
-✅ **视频文件实时访问**  
+**BRCE程序文件访问**  
+**频繁文件变化场景**  
+**要求零延迟响应**  
+**自动化部署需求**  
+**视频文件实时访问**  
 
 ### 不适合场景
-❌ **低配置服务器 (<1GB内存)**  
-❌ **超大文件频繁变化 (>1GB)**  
-❌ **网络带宽限制环境**  
+**低配置服务器 (<1GB内存)**  
+**超大文件频繁变化 (>1GB)**  
+**网络带宽限制环境**  
 
 ### 性能优化
 ```bash
@@ -400,7 +422,7 @@ sudo ./brce_ftp_setup.sh
 
 ### 定期维护
 ```bash
-# 清理日志 (可选)
+# 清理日志 (可选项)
 sudo journalctl --vacuum-time=7d
 
 # 检查服务状态
@@ -429,7 +451,7 @@ sudo cp /usr/local/bin/ftp_sync_sunny.sh ~/ftp_sync_backup.sh
 **请提供以下信息**:
 - 操作系统版本: `lsb_release -a`
 - 错误信息截图
-- 服务状态: `systemctl status brce-ftp-sync`
+- 服务状态 `systemctl status brce-ftp-sync`
 - 操作步骤描述
 
 ---
@@ -438,6 +460,6 @@ sudo cp /usr/local/bin/ftp_sync_sunny.sh ~/ftp_sync_backup.sh
 
 `brce_ftp_setup.sh` 是专门为BRCE程序设计的零延迟FTP配置工具，通过rsync+inotify技术彻底解决了传统bind mount的文件延迟问题。
 
-**一句话概括**: 让你的BRCE程序文件通过FTP实现真正的零延迟访问！
+**一句话概括**: 让你的BRCE程序文件通过FTP实现真正的零延迟访问。
 
 **核心价值**: root删除文件，FTP立即看不到；程序生成文件，FTP立即可下载！🎉 

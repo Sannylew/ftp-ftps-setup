@@ -2,14 +2,13 @@
 
 # BRCE FTP服务配置脚本
 # 基于 ftp_manager.sh 的 vsftpd 配置逻辑
-# 专门用于配置FTP访问 /opt/brce/file 目录
-# 集成实时同步功能，解决文件修改延迟问题
-# 版本: 2.0
+# 专门用于配置FTP访问 /opt/brec/file 目录
+# 版本: 2.1 - 零延迟实时同步 + 智能卸载
 
 set -e
 
 echo "======================================================"
-echo "📁 BRCE FTP服务配置工具 (零延迟版)"
+echo "📁 BRCE FTP服务配置工具 (零延迟版 v2.1)"
 echo "======================================================"
 echo ""
 
@@ -19,9 +18,9 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# 固定配置（专门为BRCE程序设计）
-BRCE_DIR="/opt/brce/file"
-FTP_USER="sunny"
+# 全局配置
+SOURCE_DIR="/opt/brec/file"  # BRCE程序文件目录
+FTP_USER="sunny"             # FTP用户名
 
 # 验证用户名函数（来自主程序）
 validate_username() {
@@ -272,7 +271,7 @@ install_brce_ftp() {
     echo "🚀 开始配置BRCE FTP服务 (零延迟版)"
     echo "======================================================"
     echo ""
-    echo "🎯 目标目录: $BRCE_DIR"
+    echo "🎯 目标目录: $SOURCE_DIR"
     echo "👤 FTP用户: $FTP_USER"
     echo "⚡ 特性: 实时同步，零延迟"
     echo ""
@@ -287,12 +286,12 @@ install_brce_ftp() {
     fi
     
     # 检查目录是否存在，如果不存在则创建
-    if [ ! -d "$BRCE_DIR" ]; then
-        echo "📁 创建BRCE目录: $BRCE_DIR"
-        mkdir -p "$BRCE_DIR"
+    if [ ! -d "$SOURCE_DIR" ]; then
+        echo "📁 创建BRCE目录: $SOURCE_DIR"
+        mkdir -p "$SOURCE_DIR"
         echo "✅ 目录创建成功"
     else
-        echo "✅ BRCE目录已存在: $BRCE_DIR"
+        echo "✅ BRCE目录已存在: $SOURCE_DIR"
     fi
     
     # 获取FTP密码
@@ -346,7 +345,7 @@ install_brce_ftp() {
     
     # 配置权限
     ftp_home="/home/$FTP_USER/ftp"
-    configure_smart_permissions "$FTP_USER" "$BRCE_DIR"
+    configure_smart_permissions "$FTP_USER" "$SOURCE_DIR"
     
     # 停止旧的实时同步服务（如果存在）
     stop_sync_service
@@ -360,7 +359,7 @@ install_brce_ftp() {
     fi
     
     # 创建实时同步脚本和服务
-    create_sync_script "$FTP_USER" "$BRCE_DIR" "$ftp_home"
+    create_sync_script "$FTP_USER" "$SOURCE_DIR" "$ftp_home"
     create_sync_service "$FTP_USER"
     
     # 生成配置
@@ -400,7 +399,7 @@ install_brce_ftp() {
     echo "   端口: 21"
     echo "   用户: $FTP_USER"
     echo "   密码: $ftp_pass"
-    echo "   访问目录: $BRCE_DIR"
+    echo "   访问目录: $SOURCE_DIR"
     echo ""
     echo "⚡ 零延迟特性："
     echo "   ✅ 文件创建 - 立即可见"
@@ -459,9 +458,9 @@ check_ftp_status() {
         echo "❌ FTP目录不存在: $FTP_HOME"
     fi
     
-    if [ -d "$BRCE_DIR" ]; then
-        echo "✅ BRCE目录存在: $BRCE_DIR"
-        file_count=$(find "$BRCE_DIR" -type f 2>/dev/null | wc -l)
+    if [ -d "$SOURCE_DIR" ]; then
+        echo "✅ BRCE目录存在: $SOURCE_DIR"
+        file_count=$(find "$SOURCE_DIR" -type f 2>/dev/null | wc -l)
         echo "📁 源目录文件数: $file_count"
         
         if [ -d "$FTP_HOME" ]; then
@@ -475,7 +474,7 @@ check_ftp_status() {
             fi
         fi
     else
-        echo "❌ BRCE目录不存在: $BRCE_DIR"
+        echo "❌ BRCE目录不存在: $SOURCE_DIR"
     fi
     
     # 显示同步服务日志
@@ -500,7 +499,7 @@ test_realtime_sync() {
     echo "🧪 测试实时同步功能"
     echo "======================================================"
     
-    TEST_FILE="$BRCE_DIR/realtime_test_$(date +%s).txt"
+    TEST_FILE="$SOURCE_DIR/realtime_test_$(date +%s).txt"
     FTP_HOME="/home/$FTP_USER/ftp"
     
     echo "📝 创建测试文件: $TEST_FILE"
@@ -548,12 +547,29 @@ uninstall_brce_ftp() {
     echo "🗑️ 卸载BRCE FTP服务"
     echo "======================================================"
     
+    echo "📋 当前配置信息："
+    echo "   - FTP用户: $FTP_USER"
+    echo "   - 源目录: $SOURCE_DIR"
+    echo "   - FTP目录: /home/$FTP_USER/ftp"
+    echo "   - 同步脚本: /usr/local/bin/ftp_sync_${FTP_USER}.sh"
+    echo "   - 系统服务: brce-ftp-sync.service"
+    echo ""
+    
     read -p "⚠️  确定要卸载BRCE FTP服务吗？(y/N): " confirm
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "❌ 取消卸载"
         return 1
     fi
     
+    echo ""
+    echo "🔧 卸载选项："
+    echo "1) 完全卸载（包含vsftpd软件包）"
+    echo "2) 仅卸载BRCE配置（保留vsftpd）"
+    echo ""
+    read -p "请选择卸载方式 (1/2，默认: 2): " uninstall_type
+    uninstall_type=${uninstall_type:-2}
+    
+    echo ""
     echo "🛑 停止FTP服务..."
     systemctl stop vsftpd 2>/dev/null || true
     systemctl disable vsftpd 2>/dev/null || true
@@ -569,8 +585,80 @@ uninstall_brce_ftp() {
     echo "🗑️ 删除FTP用户..."
     userdel -r "$FTP_USER" 2>/dev/null || true
     
-    echo "✅ 卸载完成"
-    echo "💡 注意: BRCE目录 $BRCE_DIR 保持不变"
+    echo "🗑️ 恢复配置文件..."
+    # 恢复vsftpd配置（如果有备份）
+    latest_backup=$(ls /etc/vsftpd.conf.backup.* 2>/dev/null | tail -1)
+    if [ -f "$latest_backup" ]; then
+        echo "📋 恢复vsftpd配置: $latest_backup"
+        cp "$latest_backup" /etc/vsftpd.conf
+    else
+        echo "⚠️  未找到vsftpd配置备份"
+    fi
+    
+    # 清理fstab中的bind mount条目（如果有）
+    if grep -q "/home/$FTP_USER/ftp" /etc/fstab 2>/dev/null; then
+        echo "🗑️ 清理fstab条目..."
+        sed -i "\|/home/$FTP_USER/ftp|d" /etc/fstab 2>/dev/null || true
+    fi
+    
+    # 完全卸载选项
+    if [[ "$uninstall_type" == "1" ]]; then
+        echo ""
+        echo "🗑️ 卸载vsftpd软件包..."
+        read -p "⚠️  确定要卸载vsftpd软件包吗？(y/N): " remove_pkg
+        if [[ "$remove_pkg" =~ ^[Yy]$ ]]; then
+            if command -v apt-get &> /dev/null; then
+                apt-get remove --purge -y vsftpd 2>/dev/null || true
+                echo "✅ vsftpd已卸载"
+            elif command -v yum &> /dev/null; then
+                yum remove -y vsftpd 2>/dev/null || true
+                echo "✅ vsftpd已卸载"
+            fi
+        else
+            echo "💡 保留vsftpd软件包"
+        fi
+    fi
+    
+    echo ""
+    echo "🔄 脚本管理选项："
+    echo "📄 当前脚本: $(readlink -f "$0")"
+    echo ""
+    read -p "🗑️ 是否删除本脚本文件？(y/N): " remove_script
+    
+    if [[ "$remove_script" =~ ^[Yy]$ ]]; then
+        script_path=$(readlink -f "$0")
+        echo "🗑️ 准备删除脚本: $script_path"
+        echo "⏰ 3秒后删除脚本文件..."
+        sleep 1 && echo "⏰ 2..." && sleep 1 && echo "⏰ 1..." && sleep 1
+        
+        # 创建自删除脚本
+        cat > /tmp/cleanup_brce_script.sh << EOF
+#!/bin/bash
+echo "🗑️ 删除BRCE FTP脚本..."
+rm -f "$script_path"
+if [ ! -f "$script_path" ]; then
+    echo "✅ 脚本已删除: $script_path"
+else
+    echo "⚠️  脚本删除失败: $script_path"
+fi
+rm -f /tmp/cleanup_brce_script.sh
+EOF
+        chmod +x /tmp/cleanup_brce_script.sh
+        
+        echo "✅ 卸载完成"
+        echo "💡 注意: BRCE目录 $SOURCE_DIR 保持不变"
+        echo "🚀 正在删除脚本文件..."
+        
+        # 执行自删除并退出
+        exec /tmp/cleanup_brce_script.sh
+    else
+        echo "💡 保留脚本文件: $(readlink -f "$0")"
+        echo "✅ 卸载完成"
+        echo "💡 注意: BRCE目录 $SOURCE_DIR 保持不变"
+        echo ""
+        echo "🔄 脚本已保留，可以随时重新配置FTP服务"
+        echo "📝 使用方法: sudo $(basename "$0")"
+    fi
 }
 
 # 主菜单
