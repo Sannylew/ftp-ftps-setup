@@ -36,6 +36,57 @@
 - **崩溃重启**: 5秒后自动重启
 - **后台运行**: systemd管理
 
+## 📥 从GitHub仓库获取
+
+### 🌐 **仓库地址**
+**GitHub仓库**: https://github.com/Sannylew/ftp-ftps-setup
+
+### 📦 **下载方式**
+
+#### **方法1：直接下载脚本（推荐）**
+```bash
+# 下载BRCE零延迟脚本
+wget https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/brce_ftp_setup.sh
+
+# 添加执行权限
+chmod +x brce_ftp_setup.sh
+
+# 运行脚本
+sudo ./brce_ftp_setup.sh
+```
+
+#### **方法2：一键安装**
+```bash
+# 一条命令完成下载和运行
+curl -sSL https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/brce_ftp_setup.sh | sudo bash
+```
+
+#### **方法3：克隆完整仓库**
+```bash
+# 克隆仓库（包含所有脚本和文档）
+git clone https://github.com/Sannylew/ftp-ftps-setup.git
+
+# 进入目录
+cd ftp-ftps-setup
+
+# 运行零延迟脚本
+sudo ./brce_ftp_setup.sh
+```
+
+### 📖 **在线文档**
+- **使用说明**: https://github.com/Sannylew/ftp-ftps-setup/blob/main/BRCE_FTP_零延迟配置说明.md
+- **项目主页**: https://github.com/Sannylew/ftp-ftps-setup
+- **问题反馈**: https://github.com/Sannylew/ftp-ftps-setup/issues
+
+### 🔄 **更新脚本**
+```bash
+# 如果已克隆仓库，获取最新版本
+git pull origin main
+
+# 或重新下载最新版本
+wget -O brce_ftp_setup.sh https://raw.githubusercontent.com/Sannylew/ftp-ftps-setup/main/brce_ftp_setup.sh
+```
+
 ## 🚀 快速开始
 
 ### 1. 准备工作
